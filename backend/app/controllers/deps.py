@@ -1,10 +1,10 @@
 from typing import Generator
 
-from app.core.database import SessionLocal
+from app.core import database
 
 
 def get_session() -> Generator:
-    session = SessionLocal()
+    session = database.SessionLocal()
     try:
         yield session
         session.commit()

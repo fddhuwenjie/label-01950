@@ -33,3 +33,12 @@ def test_lsp_websocket(client):
         payload = json.loads(response)
         assert payload["id"] == 1
         assert payload["result"] == "ok"
+
+
+def test_lsp_websocket_invalid_json(client):
+    lsp_controller.service = FakeService()
+    with client.websocket_connect("/ws/lsp") as websocket:
+        websocket.send_text("not-json")
+        response = websocket.receive_text()
+        payload = json.loads(response)
+        assert payload["message"] == "invalid_json"

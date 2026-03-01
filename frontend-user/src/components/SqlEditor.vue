@@ -8,12 +8,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as monaco from "monaco-editor";
-import {
-  MonacoLanguageClient,
-  CloseAction,
-  ErrorAction,
-  MonacoServices,
-} from "monaco-languageclient";
+import { MonacoLanguageClient } from "monaco-languageclient";
+import { CloseAction, ErrorAction } from "vscode-languageclient";
 import { toSocket, WebSocketMessageReader, WebSocketMessageWriter } from "vscode-ws-jsonrpc";
 import { useCatalogStore } from "../store/catalog";
 import { useLspStore } from "../store/lsp";
@@ -113,7 +109,6 @@ function scheduleReconnect() {
 
 onMounted(() => {
   if (!containerRef.value) return;
-  MonacoServices.install();
   monaco.languages.register({ id: "sql" });
   monaco.languages.registerCompletionItemProvider("sql", {
     provideCompletionItems: () => ({
