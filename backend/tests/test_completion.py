@@ -147,7 +147,7 @@ class TestCompletionService:
     def test_is_word_char_special(self, service):
         """Test word character detection for special chars."""
         assert service._is_word_char(' ') is False
-        assert service._is_word_char('.') is False
+        assert service._is_word_char('.') is True  # Dot is allowed for qualified names (table.column)
         assert service._is_word_char(',') is False
     
     def test_completions_limit(self, service):
@@ -161,6 +161,76 @@ class TestCompletionService:
         text = "SELECT"
         completions = service.get_completions(text, 10, 0, "ansi")
         assert completions == []
+
+
+class TestContextAwareCompletion:
+    """Test context-aware completion features."""
+    
+    @pytest.fixture
+    def service(self):
+        return CompletionService()
+    
+    def test_from_clause_suggests_tables(self, service):
+        """Test that FROM clause suggests table names."""
+        text = "SELECT * FROM "
+        completions = service.get_completions(text, 0, 14, "ansi")
+        labels = [c.label for c in completions]
+        # Should include table names
+        assert "users" in labels
+        assert "orders" in labels
+        assert "products" in labels
+    
+    def test_select_clause_suggests_functions(self, service):
+        """Test that SELECT clause suggests functions."""
+        text = "SELECT CO"
+        completions = service.get_completions(text, 0, 9, "ansi")
+        labels = [c.label for c in completions]
+        # Should include functions starting with CO
+        assert "COUNT" in labels
+        assert "COALESCE" in labels
+    
+    def test_where_clause_suggests_columns(self, service):
+        """Test that WHERE clause suggests columns from referenced tables."""
+        text = "SELECT * FROM users WHERE "
+        completions = service.get_completions(text, 0, 26, "ansi")
+        labels = [c.label for c in completions]
+        # Should include columns from users table
+        assert "id" in labels
+        assert "name" in labels
+        assert "email" in labels
+    
+    def test_qualified_column_completion(self, service):
+        """Test completion for qualified column names (table.column)."""
+        text = "SELECT users."
+        completions = service.get_completions(text, 0, 13, "ansi")
+        labels = [c.label for c in completions]
+        # Should include qualified column names
+        assert any("users.id" in label for label in labels)
+        assert any("users.name" in label for label in labels)
+    
+    def test_join_clause_suggests_tables(self, service):
+        """Test that JOIN clause suggests table names."""
+        text = "SELECT * FROM users JOIN "
+        completions = service.get_completions(text, 0, 25, "ansi")
+        labels = [c.label for c in completions]
+        # Should include table names
+        assert "orders" in labels
+        assert "products" in labels
+    
+    def test_order_by_suggests_columns(self, service):
+        """Test that ORDER BY clause suggests columns."""
+        text = "SELECT * FROM users ORDER BY "
+        completions = service.get_completions(text, 0, 29, "ansi")
+        labels = [c.label for c in completions]
+        # Should include columns from users table
+        assert "id" in labels
+        assert "name" in labels
+    
+    def test_table_metadata_exists(self, service):
+        """Test that mock table metadata is available."""
+        assert "users" in service.MOCK_TABLES
+        assert "columns" in service.MOCK_TABLES["users"]
+        assert "id" in service.MOCK_TABLES["users"]["columns"]
 
 
 class TestCompletionServiceSingleton:

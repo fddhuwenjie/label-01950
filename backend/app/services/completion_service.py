@@ -1,14 +1,66 @@
 """
-SQL code completion service.
+SQL code completion service with context-aware suggestions.
 """
-from typing import List, Optional
+import re
+from typing import List, Optional, Set, Tuple
+from enum import Enum
 
 from ..core import logger
 from ..models import CompletionItem, CompletionItemKind
 
 
+class SQLContext(Enum):
+    """SQL syntax context for smart completion."""
+    UNKNOWN = "unknown"
+    SELECT_CLAUSE = "select"      # After SELECT, before FROM
+    FROM_CLAUSE = "from"          # After FROM, before WHERE/JOIN
+    JOIN_CLAUSE = "join"          # After JOIN keyword
+    WHERE_CLAUSE = "where"        # After WHERE
+    GROUP_BY_CLAUSE = "group_by"  # After GROUP BY
+    ORDER_BY_CLAUSE = "order_by"  # After ORDER BY
+    INSERT_INTO = "insert_into"   # After INSERT INTO
+    UPDATE_SET = "update_set"     # After UPDATE ... SET
+    CREATE_TABLE = "create_table" # After CREATE TABLE
+
+
 class CompletionService:
-    """Service for SQL code completion suggestions."""
+    """Service for SQL code completion suggestions with context awareness."""
+    
+    # Mock table metadata (in production, this would come from a metadata service)
+    MOCK_TABLES = {
+        "users": {
+            "columns": ["id", "name", "email", "status", "created_at", "updated_at"],
+            "description": "User accounts table"
+        },
+        "orders": {
+            "columns": ["id", "user_id", "product_id", "quantity", "price", "status", "created_at"],
+            "description": "Customer orders table"
+        },
+        "products": {
+            "columns": ["id", "name", "description", "price", "category_id", "stock", "created_at"],
+            "description": "Product catalog table"
+        },
+        "categories": {
+            "columns": ["id", "name", "parent_id", "description"],
+            "description": "Product categories table"
+        },
+        "customers": {
+            "columns": ["id", "name", "email", "phone", "address", "city", "country"],
+            "description": "Customer information table"
+        },
+        "employees": {
+            "columns": ["id", "name", "department", "position", "salary", "hire_date"],
+            "description": "Employee records table"
+        },
+        "transactions": {
+            "columns": ["id", "order_id", "amount", "payment_method", "status", "transaction_date"],
+            "description": "Payment transactions table"
+        },
+        "inventory": {
+            "columns": ["id", "product_id", "warehouse_id", "quantity", "last_updated"],
+            "description": "Inventory tracking table"
+        }
+    }
     
     # SQL Keywords
     SQL_KEYWORDS = [
@@ -166,7 +218,127 @@ class CompletionService:
     
     def __init__(self):
         self._completion_cache: dict = {}
+        self._table_aliases: dict = {}  # Track table aliases in current query
         logger.info("CompletionService initialized")
+    
+    def _analyze_context(self, text: str, line: int, character: int) -> Tuple[SQLContext, Set[str], dict]:
+        """
+        Analyze SQL context at the given position.
+        
+        Returns:
+            Tuple of (context, referenced_tables, table_aliases)
+        """
+        # Get text up to cursor position
+        lines = text.split('\n')
+        text_before_cursor = '\n'.join(lines[:line]) + '\n' + lines[line][:character] if line < len(lines) else text
+        
+        # Normalize whitespace for analysis
+        normalized = ' '.join(text_before_cursor.upper().split())
+        
+        # Extract table aliases (e.g., "users u", "orders AS o")
+        table_aliases = {}
+        alias_pattern = r'\b(\w+)\s+(?:AS\s+)?(\w+)\s*(?:,|JOIN|WHERE|GROUP|ORDER|ON|LEFT|RIGHT|INNER|$)'
+        
+        # Find referenced tables
+        referenced_tables: Set[str] = set()
+        for table_name in self.MOCK_TABLES.keys():
+            if table_name.upper() in normalized:
+                referenced_tables.add(table_name)
+        
+        # Extract aliases from FROM clause
+        from_match = re.search(r'\bFROM\s+(.+?)(?:\bWHERE\b|\bGROUP\b|\bORDER\b|\bLIMIT\b|\bJOIN\b|$)', normalized, re.IGNORECASE)
+        if from_match:
+            from_clause = from_match.group(1)
+            # Parse "table alias" or "table AS alias" patterns
+            for table_name in self.MOCK_TABLES.keys():
+                pattern = rf'\b{table_name.upper()}\s+(?:AS\s+)?(\w+)'
+                alias_match = re.search(pattern, from_clause)
+                if alias_match:
+                    table_aliases[alias_match.group(1).lower()] = table_name
+        
+        # Determine context based on keywords
+        context = SQLContext.UNKNOWN
+        
+        # Check context in reverse order of SQL clause precedence
+        # Use more flexible patterns that match end of string or trailing whitespace
+        if re.search(r'\bORDER\s+BY\b', normalized):
+            context = SQLContext.ORDER_BY_CLAUSE
+        elif re.search(r'\bGROUP\s+BY\b', normalized):
+            context = SQLContext.GROUP_BY_CLAUSE
+        elif re.search(r'\bWHERE\b', normalized) and not re.search(r'\bGROUP\s+BY\b', normalized) and not re.search(r'\bORDER\s+BY\b', normalized):
+            context = SQLContext.WHERE_CLAUSE
+        elif re.search(r'\bJOIN\s*$', normalized) or re.search(r'\bJOIN\s+\w*$', normalized):
+            context = SQLContext.JOIN_CLAUSE
+        elif re.search(r'\bFROM\s*$', normalized) or re.search(r'\bFROM\s+\w*$', normalized):
+            context = SQLContext.FROM_CLAUSE
+        elif re.search(r'\bSELECT\b', normalized) and not re.search(r'\bFROM\b', normalized):
+            context = SQLContext.SELECT_CLAUSE
+        elif re.search(r'\bINSERT\s+INTO\s*$', normalized) or re.search(r'\bINSERT\s+INTO\s+\w*$', normalized):
+            context = SQLContext.INSERT_INTO
+        elif re.search(r'\bUPDATE\s+\w+\s+SET\b', normalized):
+            context = SQLContext.UPDATE_SET
+        elif re.search(r'\bCREATE\s+TABLE\b', normalized):
+            context = SQLContext.CREATE_TABLE
+        
+        logger.debug(f"Context analysis: {context.value}, tables: {referenced_tables}, aliases: {table_aliases}")
+        return context, referenced_tables, table_aliases
+    
+    def _build_table_completions(self) -> List[CompletionItem]:
+        """Build completion items for table names."""
+        return [
+            CompletionItem(
+                label=table_name,
+                kind=CompletionItemKind.CLASS,  # Use CLASS for tables
+                detail=f"Table: {meta['description']}",
+                documentation=f"Columns: {', '.join(meta['columns'])}",
+                insertText=table_name,
+                sortText=f"0_{table_name}"  # High priority
+            )
+            for table_name, meta in self.MOCK_TABLES.items()
+        ]
+    
+    def _build_column_completions(self, tables: Set[str], aliases: dict) -> List[CompletionItem]:
+        """Build completion items for column names from referenced tables."""
+        items = []
+        seen_columns: Set[str] = set()
+        
+        for table_name in tables:
+            if table_name in self.MOCK_TABLES:
+                meta = self.MOCK_TABLES[table_name]
+                for col in meta['columns']:
+                    if col not in seen_columns:
+                        items.append(CompletionItem(
+                            label=col,
+                            kind=CompletionItemKind.FIELD,
+                            detail=f"Column from {table_name}",
+                            insertText=col,
+                            sortText=f"0_{col}"  # High priority
+                        ))
+                        seen_columns.add(col)
+        
+        # Also add qualified column names (table.column or alias.column)
+        for table_name in tables:
+            if table_name in self.MOCK_TABLES:
+                meta = self.MOCK_TABLES[table_name]
+                # Find alias for this table
+                table_alias = None
+                for alias, tbl in aliases.items():
+                    if tbl == table_name:
+                        table_alias = alias
+                        break
+                
+                prefix = table_alias if table_alias else table_name
+                for col in meta['columns']:
+                    qualified_name = f"{prefix}.{col}"
+                    items.append(CompletionItem(
+                        label=qualified_name,
+                        kind=CompletionItemKind.FIELD,
+                        detail=f"Column from {table_name}",
+                        insertText=qualified_name,
+                        sortText=f"1_{qualified_name}"
+                    ))
+        
+        return items
     
     def _build_keyword_completions(self) -> List[CompletionItem]:
         """Build completion items for SQL keywords."""
@@ -243,7 +415,7 @@ class CompletionService:
         dialect: str = "ansi"
     ) -> List[CompletionItem]:
         """
-        Get completion suggestions for the given position.
+        Get context-aware completion suggestions for the given position.
         
         Args:
             text: Full document text.
@@ -252,7 +424,7 @@ class CompletionService:
             dialect: SQL dialect.
             
         Returns:
-            List of completion items.
+            List of completion items based on SQL context.
         """
         # Get the current word being typed
         lines = text.split('\n')
@@ -262,18 +434,96 @@ class CompletionService:
         current_line = lines[line]
         prefix = self._get_word_prefix(current_line, character)
         
-        logger.debug(f"Getting completions for prefix: '{prefix}', dialect: {dialect}")
+        # Analyze SQL context
+        context, referenced_tables, table_aliases = self._analyze_context(text, line, character)
         
-        # Build all completions
+        logger.debug(f"Getting completions for prefix: '{prefix}', context: {context.value}, dialect: {dialect}")
+        
+        # Build context-aware completions
         all_items = []
-        all_items.extend(self._build_keyword_completions())
-        all_items.extend(self._build_function_completions())
-        all_items.extend(self._build_type_completions())
+        
+        # Context-specific completions
+        if context == SQLContext.FROM_CLAUSE or context == SQLContext.JOIN_CLAUSE:
+            # After FROM or JOIN: prioritize table names
+            all_items.extend(self._build_table_completions())
+            all_items.extend(self._build_keyword_completions())
+            
+        elif context == SQLContext.SELECT_CLAUSE:
+            # After SELECT: prioritize columns and functions
+            if referenced_tables:
+                all_items.extend(self._build_column_completions(referenced_tables, table_aliases))
+            all_items.extend(self._build_function_completions())
+            all_items.extend(self._build_keyword_completions())
+            # Also add table names for qualified column access
+            all_items.extend(self._build_table_completions())
+            
+        elif context == SQLContext.WHERE_CLAUSE:
+            # After WHERE: prioritize columns, then functions and keywords
+            if referenced_tables:
+                all_items.extend(self._build_column_completions(referenced_tables, table_aliases))
+            all_items.extend(self._build_function_completions())
+            all_items.extend(self._build_keyword_completions())
+            
+        elif context == SQLContext.GROUP_BY_CLAUSE or context == SQLContext.ORDER_BY_CLAUSE:
+            # After GROUP BY or ORDER BY: prioritize columns
+            if referenced_tables:
+                all_items.extend(self._build_column_completions(referenced_tables, table_aliases))
+            all_items.extend(self._build_keyword_completions())
+            
+        elif context == SQLContext.INSERT_INTO:
+            # After INSERT INTO: prioritize table names
+            all_items.extend(self._build_table_completions())
+            
+        elif context == SQLContext.UPDATE_SET:
+            # After UPDATE SET: prioritize columns
+            if referenced_tables:
+                all_items.extend(self._build_column_completions(referenced_tables, table_aliases))
+            all_items.extend(self._build_function_completions())
+            
+        elif context == SQLContext.CREATE_TABLE:
+            # After CREATE TABLE: suggest data types
+            all_items.extend(self._build_type_completions())
+            all_items.extend(self._build_keyword_completions())
+            
+        else:
+            # Default: provide all completions
+            all_items.extend(self._build_keyword_completions())
+            all_items.extend(self._build_function_completions())
+            all_items.extend(self._build_table_completions())
+            all_items.extend(self._build_type_completions())
+            if referenced_tables:
+                all_items.extend(self._build_column_completions(referenced_tables, table_aliases))
+        
+        # Add dialect-specific completions
         all_items.extend(self._build_dialect_completions(dialect))
         
         # Filter by prefix
         if prefix:
             prefix_upper = prefix.upper()
+            # Handle qualified names (e.g., "users." or "u.")
+            if '.' in prefix:
+                # User is typing a qualified column name
+                table_prefix, col_prefix = prefix.rsplit('.', 1)
+                table_prefix_lower = table_prefix.lower()
+                
+                # Find the actual table name from alias or direct reference
+                actual_table = table_aliases.get(table_prefix_lower, table_prefix_lower)
+                
+                if actual_table in self.MOCK_TABLES:
+                    # Return only columns from this specific table
+                    filtered_items = []
+                    for col in self.MOCK_TABLES[actual_table]['columns']:
+                        if col.upper().startswith(col_prefix.upper()):
+                            qualified_name = f"{table_prefix}.{col}"
+                            filtered_items.append(CompletionItem(
+                                label=qualified_name,
+                                kind=CompletionItemKind.FIELD,
+                                detail=f"Column from {actual_table}",
+                                insertText=qualified_name,
+                                sortText=f"0_{col}"
+                            ))
+                    return filtered_items[:50]
+            
             filtered_items = [
                 item for item in all_items
                 if item.label.upper().startswith(prefix_upper)
@@ -281,24 +531,32 @@ class CompletionService:
         else:
             filtered_items = all_items
         
-        logger.debug(f"Returning {len(filtered_items)} completion items")
-        return filtered_items[:50]  # Limit results
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_items = []
+        for item in filtered_items:
+            if item.label not in seen:
+                seen.add(item.label)
+                unique_items.append(item)
+        
+        logger.debug(f"Returning {len(unique_items)} completion items for context: {context.value}")
+        return unique_items[:50]  # Limit results
     
     def _get_word_prefix(self, line: str, character: int) -> str:
         """
-        Extract the word prefix at the given position.
+        Extract the word prefix at the given position, including qualified names.
         
         Args:
             line: Current line text.
             character: Character position.
             
         Returns:
-            Word prefix string.
+            Word prefix string (may include dots for qualified names).
         """
         if character > len(line):
             character = len(line)
         
-        # Find word start
+        # Find word start (including dots for qualified names like "table.column")
         start = character
         while start > 0 and self._is_word_char(line[start - 1]):
             start -= 1
@@ -306,8 +564,8 @@ class CompletionService:
         return line[start:character]
     
     def _is_word_char(self, char: str) -> bool:
-        """Check if character is part of a word."""
-        return char.isalnum() or char == '_'
+        """Check if character is part of a word (including dots for qualified names)."""
+        return char.isalnum() or char == '_' or char == '.'
 
 
 # Singleton instance
