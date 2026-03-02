@@ -1,0 +1,26 @@
+# FastAPI and ASGI
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+websockets==12.0
+
+# SQLFluff for SQL linting
+sqlfluff==3.0.3
+
+# Pydantic for data validation
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# Async support
+asyncio-throttle==1.0.2
+
+# Logging
+loguru==0.7.2
+
+# Testing
+pytest>=7.0.0,<8.0.0
+pytest-asyncio>=0.21.0,<0.24.0
+pytest-cov==4.1.0
+httpx==0.26.0
+
+# Type hints
+typing-extensions==4.9.0
