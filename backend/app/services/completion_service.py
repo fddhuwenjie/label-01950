@@ -2,7 +2,9 @@
 SQL code completion service with context-aware suggestions.
 """
 import re
-from typing import List, Optional, Set, Tuple
+from abc import ABC, abstractmethod
+from typing import List, Optional, Set, Tuple, Dict, Any, Protocol
+
 from enum import Enum
 
 from ..core import logger
@@ -23,44 +25,104 @@ class SQLContext(Enum):
     CREATE_TABLE = "create_table" # After CREATE TABLE
 
 
+class MetadataProvider(Protocol):
+    """
+    Protocol for metadata providers.
+    
+    Implement this interface to provide custom table/column metadata
+    from external sources (databases, catalogs, etc.).
+    """
+    
+    def get_tables(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get all available tables with their metadata.
+        
+        Returns:
+            Dict mapping table names to metadata dicts containing:
+            - columns: List[str] - column names
+            - description: str - table description
+        """
+        ...
+    
+    def get_table_columns(self, table_name: str) -> List[str]:
+        """
+        Get columns for a specific table.
+        
+        Args:
+            table_name: Name of the table
+            
+        Returns:
+            List of column names
+        """
+        ...
+    
+    def refresh(self) -> None:
+        """Refresh metadata from the source."""
+        ...
+
+
+class MockMetadataProvider:
+    """
+    Mock metadata provider with hardcoded table structures.
+    
+    This is the default provider for demonstration purposes.
+    Replace with a real implementation to connect to actual databases.
+    """
+    
+    def __init__(self):
+        self._tables = {
+            "users": {
+                "columns": ["id", "name", "email", "status", "created_at", "updated_at"],
+                "description": "User accounts table"
+            },
+            "orders": {
+                "columns": ["id", "user_id", "product_id", "quantity", "price", "status", "created_at"],
+                "description": "Customer orders table"
+            },
+            "products": {
+                "columns": ["id", "name", "description", "price", "category_id", "stock", "created_at"],
+                "description": "Product catalog table"
+            },
+            "categories": {
+                "columns": ["id", "name", "parent_id", "description"],
+                "description": "Product categories table"
+            },
+            "customers": {
+                "columns": ["id", "name", "email", "phone", "address", "city", "country"],
+                "description": "Customer information table"
+            },
+            "employees": {
+                "columns": ["id", "name", "department", "position", "salary", "hire_date"],
+                "description": "Employee records table"
+            },
+            "transactions": {
+                "columns": ["id", "order_id", "amount", "payment_method", "status", "transaction_date"],
+                "description": "Payment transactions table"
+            },
+            "inventory": {
+                "columns": ["id", "product_id", "warehouse_id", "quantity", "last_updated"],
+                "description": "Inventory tracking table"
+            }
+        }
+        logger.info("MockMetadataProvider initialized with {} tables", len(self._tables))
+    
+    def get_tables(self) -> Dict[str, Dict[str, Any]]:
+        """Get all available tables."""
+        return self._tables.copy()
+    
+    def get_table_columns(self, table_name: str) -> List[str]:
+        """Get columns for a specific table."""
+        if table_name in self._tables:
+            return self._tables[table_name]["columns"].copy()
+        return []
+    
+    def refresh(self) -> None:
+        """Refresh metadata (no-op for mock provider)."""
+        logger.debug("MockMetadataProvider refresh called (no-op)")
+
+
 class CompletionService:
     """Service for SQL code completion suggestions with context awareness."""
-    
-    # Mock table metadata (in production, this would come from a metadata service)
-    MOCK_TABLES = {
-        "users": {
-            "columns": ["id", "name", "email", "status", "created_at", "updated_at"],
-            "description": "User accounts table"
-        },
-        "orders": {
-            "columns": ["id", "user_id", "product_id", "quantity", "price", "status", "created_at"],
-            "description": "Customer orders table"
-        },
-        "products": {
-            "columns": ["id", "name", "description", "price", "category_id", "stock", "created_at"],
-            "description": "Product catalog table"
-        },
-        "categories": {
-            "columns": ["id", "name", "parent_id", "description"],
-            "description": "Product categories table"
-        },
-        "customers": {
-            "columns": ["id", "name", "email", "phone", "address", "city", "country"],
-            "description": "Customer information table"
-        },
-        "employees": {
-            "columns": ["id", "name", "department", "position", "salary", "hire_date"],
-            "description": "Employee records table"
-        },
-        "transactions": {
-            "columns": ["id", "order_id", "amount", "payment_method", "status", "transaction_date"],
-            "description": "Payment transactions table"
-        },
-        "inventory": {
-            "columns": ["id", "product_id", "warehouse_id", "quantity", "last_updated"],
-            "description": "Inventory tracking table"
-        }
-    }
     
     # SQL Keywords
     SQL_KEYWORDS = [
@@ -216,10 +278,38 @@ class CompletionService:
         "ARRAY", "MAP", "STRUCT", "JSON",
     ]
     
-    def __init__(self):
+    def __init__(self, metadata_provider: Optional[MetadataProvider] = None):
+        """
+        Initialize CompletionService.
+        
+        Args:
+            metadata_provider: Optional metadata provider for table/column info.
+                              If not provided, uses MockMetadataProvider.
+        """
         self._completion_cache: dict = {}
         self._table_aliases: dict = {}  # Track table aliases in current query
-        logger.info("CompletionService initialized")
+        self._metadata_provider = metadata_provider or MockMetadataProvider()
+        logger.info("CompletionService initialized with {}", type(self._metadata_provider).__name__)
+    
+    @property
+    def MOCK_TABLES(self) -> Dict[str, Dict[str, Any]]:
+        """Get tables from metadata provider (for backward compatibility)."""
+        return self._metadata_provider.get_tables()
+    
+    def set_metadata_provider(self, provider: MetadataProvider) -> None:
+        """
+        Set a new metadata provider.
+        
+        Args:
+            provider: New metadata provider instance
+        """
+        self._metadata_provider = provider
+        logger.info("Metadata provider changed to {}", type(provider).__name__)
+    
+    def refresh_metadata(self) -> None:
+        """Refresh metadata from the current provider."""
+        self._metadata_provider.refresh()
+        logger.info("Metadata refreshed")
     
     def _analyze_context(self, text: str, line: int, character: int) -> Tuple[SQLContext, Set[str], dict]:
         """
@@ -572,4 +662,10 @@ class CompletionService:
 completion_service = CompletionService()
 
 
-__all__ = ["CompletionService", "completion_service"]
+__all__ = [
+    "CompletionService",
+    "completion_service",
+    "MetadataProvider",
+    "MockMetadataProvider",
+    "SQLContext",
+]

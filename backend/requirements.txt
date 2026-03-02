@@ -17,8 +17,8 @@ asyncio-throttle==1.0.2
 loguru==0.7.2
 
 # Testing
-pytest>=7.0.0,<8.0.0
-pytest-asyncio>=0.21.0,<0.24.0
+pytest==7.4.4
+pytest-asyncio==0.23.8
 pytest-cov==4.1.0
 httpx==0.26.0
 

@@ -233,6 +233,72 @@ class TestContextAwareCompletion:
         assert "id" in service.MOCK_TABLES["users"]["columns"]
 
 
+class TestMetadataProvider:
+    """Test metadata provider functionality."""
+    
+    def test_custom_metadata_provider(self):
+        """Test using a custom metadata provider."""
+        from app.services.completion_service import MockMetadataProvider
+        
+        # Create a custom provider with different tables
+        class CustomProvider:
+            def get_tables(self):
+                return {
+                    "custom_table": {
+                        "columns": ["col1", "col2"],
+                        "description": "Custom table"
+                    }
+                }
+            
+            def get_table_columns(self, table_name):
+                if table_name == "custom_table":
+                    return ["col1", "col2"]
+                return []
+            
+            def refresh(self):
+                pass
+        
+        service = CompletionService(metadata_provider=CustomProvider())
+        
+        # Verify custom tables are used
+        text = "SELECT * FROM "
+        completions = service.get_completions(text, 0, 14, "ansi")
+        labels = [c.label for c in completions]
+        assert "custom_table" in labels
+        assert "users" not in labels  # Default table should not be present
+    
+    def test_set_metadata_provider(self):
+        """Test changing metadata provider at runtime."""
+        from app.services.completion_service import MockMetadataProvider
+        
+        service = CompletionService()
+        
+        # Initially should have default tables
+        assert "users" in service.MOCK_TABLES
+        
+        # Create and set a new provider
+        class EmptyProvider:
+            def get_tables(self):
+                return {}
+            
+            def get_table_columns(self, table_name):
+                return []
+            
+            def refresh(self):
+                pass
+        
+        service.set_metadata_provider(EmptyProvider())
+        
+        # Now should have no tables
+        assert len(service.MOCK_TABLES) == 0
+    
+    def test_refresh_metadata(self):
+        """Test metadata refresh functionality."""
+        service = CompletionService()
+        # Should not raise any errors
+        service.refresh_metadata()
+
+
 class TestCompletionServiceSingleton:
     """Tests for completion_service singleton."""
     
