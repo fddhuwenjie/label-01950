@@ -32,15 +32,11 @@
       <span class="cursor-position">
         行 {{ editorStore.cursorPosition.line }}, 列 {{ editorStore.cursorPosition.column }}
       </span>
-      <span class="dialect-badge">
-        {{ dialectLabel }}
-      </span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import {
   ExclamationCircleOutlined,
   WarningOutlined,
@@ -52,15 +48,6 @@ import { useConnectionStore } from '@/stores/connection'
 
 const editorStore = useEditorStore()
 const connectionStore = useConnectionStore()
-
-const dialectLabel = computed(() => {
-  const labels: Record<string, string> = {
-    ansi: 'ANSI SQL',
-    sparksql: 'SparkSQL',
-    hive: 'HiveSQL',
-  }
-  return labels[editorStore.dialect] || editorStore.dialect.toUpperCase()
-})
 </script>
 
 <style lang="scss" scoped>

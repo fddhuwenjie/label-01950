@@ -10,7 +10,6 @@
       </div>
 
       <div class="header-center">
-        <DialectSelector v-model="editorStore.dialect" @change="handleDialectChange" />
       </div>
 
       <div class="header-right">
@@ -26,6 +25,7 @@
           <template #icon><ClearOutlined /></template>
           清空
         </a-button>
+        <DialectSelector v-model="editorStore.dialect" @change="handleDialectChange" />
       </div>
     </header>
 
@@ -47,6 +47,16 @@
           <DiagnosticsPanel @close="showDiagnostics = false" @goto="gotoPosition" />
         </div>
       </transition>
+
+      <!-- Toggle Diagnostics Button -->
+      <div v-if="!showDiagnostics" class="toggle-diagnostics" @click="showDiagnostics = true">
+        <span class="toggle-text">
+          <ExclamationCircleOutlined v-if="editorStore.hasErrors" />
+          <WarningOutlined v-else-if="editorStore.warningCount > 0" />
+          <CheckCircleOutlined v-else />
+          问题 ({{ editorStore.diagnostics.length }})
+        </span>
+      </div>
     </main>
 
     <!-- Status Bar -->
@@ -62,6 +72,9 @@ import {
   ThunderboltOutlined,
   FormatPainterOutlined,
   ClearOutlined,
+  ExclamationCircleOutlined,
+  WarningOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons-vue'
 
 import SqlEditor from '@/components/SqlEditor.vue'
@@ -113,6 +126,8 @@ async function handleContentChange(content: string) {
   editorStore.setLinting(true)
   try {
     await wsClient.didChange(editorStore.documentUri, content)
+    // Note: diagnostics are handled in onDiagnostics callback
+    // setLinting(false) is called there
   } catch (error) {
     console.error('Failed to send content change:', error)
     editorStore.setLinting(false)
@@ -194,20 +209,18 @@ function gotoPosition(line: number, column: number) {
 onMounted(() => {
   wsClient.connect()
 
-  // Set initial sample SQL
+  // Set initial sample SQL (correct syntax)
   const sampleSql = `-- SQL 智能编辑器示例
 -- 输入 SQL 语句，实时检查语法错误！
 
-SELECT 
-    u.id,
-    u.name,
-    u.email,
-    COUNT(o.id) AS order_count
-FROM users u
-LEFT JOIN orders o ON u.id = o.user_id
-WHERE u.status = 'active'
-GROUP BY u.id, u.name, u.email
-ORDER BY order_count DESC
+SELECT
+    id,
+    name,
+    email,
+    status
+FROM users
+WHERE status = 'active'
+ORDER BY name
 LIMIT 10;
 `
   editorStore.setContent(sampleSql)
@@ -282,6 +295,30 @@ onUnmounted(() => {
   border-radius: $border-radius-md;
   box-shadow: $shadow-sm;
   overflow: hidden;
+}
+
+.toggle-diagnostics {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-sm $spacing-md;
+  background-color: $bg-card;
+  border-radius: $border-radius-md;
+  box-shadow: $shadow-sm;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover {
+    background-color: darken($bg-card, 3%);
+  }
+
+  .toggle-text {
+    display: flex;
+    align-items: center;
+    gap: $spacing-xs;
+    font-size: $font-size-sm;
+    color: $text-secondary;
+  }
 }
 
 // Transitions

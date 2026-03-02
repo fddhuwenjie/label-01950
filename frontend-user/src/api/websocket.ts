@@ -159,6 +159,18 @@ export class WebSocketClient {
       const message: LSPMessage = JSON.parse(data)
       this.onMessage?.(message)
 
+      // Handle diagnostics in result (before resolving pending request)
+      if (message.result && typeof message.result === 'object' && 'diagnostics' in (message.result as object)) {
+        const result = message.result as { uri: string; diagnostics: Diagnostic[] }
+        this.onDiagnostics?.(result.uri, result.diagnostics)
+      }
+
+      // Handle completion response in result
+      if (message.result && typeof message.result === 'object' && 'items' in (message.result as object)) {
+        const result = message.result as { items: CompletionItem[] }
+        this.onCompletion?.(result.items)
+      }
+
       // Handle response to pending request
       if (message.id !== undefined && this.pendingRequests.has(message.id as number)) {
         const pending = this.pendingRequests.get(message.id as number)!
@@ -176,18 +188,6 @@ export class WebSocketClient {
       if (message.method === 'textDocument/publishDiagnostics') {
         const params = message.params as { uri: string; diagnostics: Diagnostic[] }
         this.onDiagnostics?.(params.uri, params.diagnostics)
-      }
-
-      // Handle completion response in result
-      if (message.result && typeof message.result === 'object' && 'items' in (message.result as object)) {
-        const result = message.result as { items: CompletionItem[] }
-        this.onCompletion?.(result.items)
-      }
-
-      // Handle diagnostics in result
-      if (message.result && typeof message.result === 'object' && 'diagnostics' in (message.result as object)) {
-        const result = message.result as { uri: string; diagnostics: Diagnostic[] }
-        this.onDiagnostics?.(result.uri, result.diagnostics)
       }
     } catch (error) {
       console.error('[WebSocket] Failed to parse message:', error)
