@@ -24,6 +24,8 @@ from .core import (
 )
 from .websocket import websocket_handler, connection_manager
 from .services import linter_service
+from .services.explain_service import explain_service
+from .models import ExplainRequest, ExplainResponse
 
 
 @asynccontextmanager
@@ -230,6 +232,32 @@ async def get_dialects():
         "dialects": settings.SUPPORTED_DIALECTS,
         "default": settings.DEFAULT_DIALECT
     }
+
+
+@app.post("/api/explain", response_model=ExplainResponse)
+async def explain_sql(request: ExplainRequest):
+    """
+    Generate execution plan for SQL statement.
+    
+    Args:
+        request: ExplainRequest containing SQL and dialect.
+        
+    Returns:
+        ExplainResponse with execution plan tree.
+    """
+    logger.info(f"Explain request received, dialect: {request.dialect}")
+    
+    try:
+        result = explain_service.generate_plan(
+            sql=request.sql,
+            dialect=request.dialect
+        )
+        return result
+    except ValueError as e:
+        raise ValidationException(
+            message=str(e),
+            details={"sql": request.sql[:100]}
+        )
 
 
 @app.websocket("/ws")

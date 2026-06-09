@@ -16,6 +16,10 @@ from .schemas import (
     DiagnosticsParams,
     CompletionParams,
     SetDialectParams,
+    ExplainNodeType,
+    ExplainRequest,
+    ExplainPlanNode,
+    ExplainResponse,
 )
 
 __all__ = [
@@ -33,4 +37,8 @@ __all__ = [
     "DiagnosticsParams",
     "CompletionParams",
     "SetDialectParams",
+    "ExplainNodeType",
+    "ExplainRequest",
+    "ExplainPlanNode",
+    "ExplainResponse",
 ]
