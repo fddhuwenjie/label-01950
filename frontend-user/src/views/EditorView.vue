@@ -17,6 +17,10 @@
           <template #icon><ThunderboltOutlined /></template>
           分析
         </a-button>
+        <a-button :type="showExecutionPlan ? 'primary' : 'default'" @click="toggleExecutionPlan">
+          <template #icon><ApartmentOutlined /></template>
+          Explain
+        </a-button>
         <a-button @click="formatCode">
           <template #icon><FormatPainterOutlined /></template>
           格式化
@@ -48,6 +52,18 @@
         </div>
       </transition>
 
+      <!-- Execution Plan Panel -->
+      <transition name="slide-up">
+        <div v-if="showExecutionPlan" class="execution-plan-container">
+          <ExecutionPlanPanel
+            :sql="editorStore.content"
+            :dialect="editorStore.dialect"
+            :visible="showExecutionPlan"
+            @close="showExecutionPlan = false"
+          />
+        </div>
+      </transition>
+
       <!-- Toggle Diagnostics Button -->
       <div v-if="!showDiagnostics" class="toggle-diagnostics" @click="showDiagnostics = true">
         <span class="toggle-text">
@@ -75,12 +91,14 @@ import {
   ExclamationCircleOutlined,
   WarningOutlined,
   CheckCircleOutlined,
+  ApartmentOutlined,
 } from '@ant-design/icons-vue'
 
 import SqlEditor from '@/components/SqlEditor.vue'
 import StatusBar from '@/components/StatusBar.vue'
 import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
 import DialectSelector from '@/components/DialectSelector.vue'
+import ExecutionPlanPanel from '@/components/ExecutionPlanPanel.vue'
 
 import { useEditorStore } from '@/stores/editor'
 import { useConnectionStore } from '@/stores/connection'
@@ -92,6 +110,7 @@ const connectionStore = useConnectionStore()
 
 const sqlEditorRef = ref<InstanceType<typeof SqlEditor> | null>(null)
 const showDiagnostics = ref(true)
+const showExecutionPlan = ref(false)
 const isAnalyzing = ref(false)
 
 // WebSocket client
@@ -184,6 +203,11 @@ async function analyzeCode() {
   } finally {
     isAnalyzing.value = false
   }
+}
+
+// Toggle execution plan panel
+function toggleExecutionPlan() {
+  showExecutionPlan.value = !showExecutionPlan.value
 }
 
 // Format code (placeholder - SQLFluff can format but we'd need additional endpoint)
@@ -292,6 +316,14 @@ onUnmounted(() => {
   height: $diagnostics-panel-height;
   flex-shrink: 0;
   background-color: $bg-card;
+  border-radius: $border-radius-md;
+  box-shadow: $shadow-sm;
+  overflow: hidden;
+}
+
+.execution-plan-container {
+  height: 400px;
+  flex-shrink: 0;
   border-radius: $border-radius-md;
   box-shadow: $shadow-sm;
   overflow: hidden;

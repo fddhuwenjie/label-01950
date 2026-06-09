@@ -1,9 +1,62 @@
 """
-Pydantic schemas for LSP protocol messages.
+Pydantic schemas for LSP protocol messages and execution plan.
 """
-from enum import IntEnum
+from enum import IntEnum, Enum
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
+
+
+class ExplainNodeType(str, Enum):
+    """Types of execution plan nodes."""
+    SELECT = "SELECT"
+    FROM = "FROM"
+    JOIN = "JOIN"
+    WHERE = "WHERE"
+    GROUP_BY = "GROUP_BY"
+    ORDER_BY = "ORDER_BY"
+    LIMIT = "LIMIT"
+    SUBQUERY = "SUBQUERY"
+    TABLE_SCAN = "TABLE_SCAN"
+    INDEX_SCAN = "INDEX_SCAN"
+    TEMP_TABLE = "TEMP_TABLE"
+    SORT = "SORT"
+    AGGREGATE = "AGGREGATE"
+    HASH_JOIN = "HASH_JOIN"
+    NESTED_LOOP_JOIN = "NESTED_LOOP_JOIN"
+    MERGE_JOIN = "MERGE_JOIN"
+
+
+class ExplainRequest(BaseModel):
+    """Request body for SQL explain endpoint."""
+    sql: str = Field(..., description="SQL statement to explain")
+    dialect: str = Field(default="ansi", description="SQL dialect")
+
+
+class ExplainPlanNode(BaseModel):
+    """Node in the execution plan tree."""
+    id: str = Field(..., description="Unique node identifier")
+    operation_type: ExplainNodeType = Field(..., description="Type of operation")
+    table_name: Optional[str] = Field(None, description="Table name if applicable")
+    estimated_rows: int = Field(..., description="Estimated number of rows")
+    access_type: Optional[str] = Field(None, description="Access type (full scan, index, etc.)")
+    cost: float = Field(..., description="Estimated cost")
+    description: str = Field(..., description="Human-readable description")
+    is_bottleneck: bool = Field(default=False, description="Whether this node is a performance bottleneck")
+    bottleneck_reason: Optional[str] = Field(None, description="Reason for being a bottleneck")
+    children: List["ExplainPlanNode"] = Field(default_factory=list, description="Child nodes")
+
+
+class ExplainResponse(BaseModel):
+    """Response containing execution plan."""
+    success: bool = True
+    plan: ExplainPlanNode
+    total_cost: float
+    total_estimated_rows: int
+    has_bottlenecks: bool
+    bottleneck_count: int
+
+
+ExplainPlanNode.model_rebuild()
 
 
 class DiagnosticSeverity(IntEnum):
@@ -139,4 +192,8 @@ __all__ = [
     "DiagnosticsParams",
     "CompletionParams",
     "SetDialectParams",
+    "ExplainNodeType",
+    "ExplainRequest",
+    "ExplainPlanNode",
+    "ExplainResponse",
 ]

@@ -94,7 +94,7 @@ export class ReconnectManager {
 /**
  * Create a debounced function.
  */
-export function debounce<T extends (...args: unknown[]) => void>(
+export function debounce<T extends (...args: any[]) => void>(
   fn: T,
   delay: number
 ): (...args: Parameters<T>) => void {
@@ -113,7 +113,7 @@ export function debounce<T extends (...args: unknown[]) => void>(
 /**
  * Create a throttled function.
  */
-export function throttle<T extends (...args: unknown[]) => void>(
+export function throttle<T extends (...args: any[]) => void>(
   fn: T,
   limit: number
 ): (...args: Parameters<T>) => void {
