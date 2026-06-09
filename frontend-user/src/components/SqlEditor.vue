@@ -30,9 +30,9 @@ let editor: monaco.editor.IStandaloneCodeEditor | null = null
 let completionProvider: monaco.IDisposable | null = null
 
 // Debounced change handler
-const debouncedChange = debounce((value: string) => {
+const debouncedChange = debounce(((value: string) => {
   emit('change', value)
-}, 300)
+}) as (...args: unknown[]) => void, 300)
 
 function initEditor() {
   if (!editorContainer.value) return
