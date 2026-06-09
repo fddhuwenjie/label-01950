@@ -13,6 +13,10 @@
       </div>
 
       <div class="header-right">
+        <a-button type="primary" :loading="isExplaining" @click="handleExplain">
+          <template #icon><PartitionOutlined /></template>
+          Explain
+        </a-button>
         <a-button type="primary" :loading="isAnalyzing" @click="analyzeCode">
           <template #icon><ThunderboltOutlined /></template>
           分析
@@ -48,14 +52,29 @@
         </div>
       </transition>
 
+      <!-- Explain Plan Panel -->
+      <transition name="slide-up">
+        <div v-if="showExplainPlan" class="explain-container">
+          <ExplainPlanPanel :result="explainResult" :loading="isExplaining" @close="showExplainPlan = false" />
+        </div>
+      </transition>
+
       <!-- Toggle Diagnostics Button -->
-      <div v-if="!showDiagnostics" class="toggle-diagnostics" @click="showDiagnostics = true">
-        <span class="toggle-text">
-          <ExclamationCircleOutlined v-if="editorStore.hasErrors" />
-          <WarningOutlined v-else-if="editorStore.warningCount > 0" />
-          <CheckCircleOutlined v-else />
-          问题 ({{ editorStore.diagnostics.length }})
-        </span>
+      <div v-if="!showDiagnostics && !showExplainPlan" class="toggle-bar">
+        <div class="toggle-diagnostics" @click="showDiagnostics = true">
+          <span class="toggle-text">
+            <ExclamationCircleOutlined v-if="editorStore.hasErrors" />
+            <WarningOutlined v-else-if="editorStore.warningCount > 0" />
+            <CheckCircleOutlined v-else />
+            问题 ({{ editorStore.diagnostics.length }})
+          </span>
+        </div>
+        <div class="toggle-explain" @click="!explainResult && handleExplain()">
+          <span class="toggle-text" @click.stop="showExplainPlan = !showExplainPlan">
+            <PartitionOutlined />
+            执行计划{{ explainResult ? ' (已生成)' : '' }}
+          </span>
+        </div>
       </div>
     </main>
 
@@ -75,17 +94,21 @@ import {
   ExclamationCircleOutlined,
   WarningOutlined,
   CheckCircleOutlined,
+  PartitionOutlined,
 } from '@ant-design/icons-vue'
 
 import SqlEditor from '@/components/SqlEditor.vue'
 import StatusBar from '@/components/StatusBar.vue'
 import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
 import DialectSelector from '@/components/DialectSelector.vue'
+import ExplainPlanPanel from '@/components/ExplainPlanPanel.vue'
 
 import { useEditorStore } from '@/stores/editor'
 import { useConnectionStore } from '@/stores/connection'
 import { createWebSocketClient, type CompletionItem, type Diagnostic } from '@/api/websocket'
+import { explainSql } from '@/api/explain'
 import type { SqlDialect } from '@/stores/editor'
+import type { ExplainResponse } from '@/types/executionPlan'
 
 const editorStore = useEditorStore()
 const connectionStore = useConnectionStore()
@@ -93,6 +116,9 @@ const connectionStore = useConnectionStore()
 const sqlEditorRef = ref<InstanceType<typeof SqlEditor> | null>(null)
 const showDiagnostics = ref(true)
 const isAnalyzing = ref(false)
+const isExplaining = ref(false)
+const showExplainPlan = ref(false)
+const explainResult = ref<ExplainResponse | null>(null)
 
 // WebSocket client
 const wsUrl = import.meta.env.PROD
@@ -186,6 +212,40 @@ async function analyzeCode() {
   }
 }
 
+// Explain SQL execution plan
+async function handleExplain() {
+  if (!editorStore.content.trim()) {
+    message.warning('请输入 SQL 语句')
+    return
+  }
+
+  isExplaining.value = true
+  showExplainPlan.value = true
+
+  try {
+    const result = await explainSql({
+      sql: editorStore.content,
+      dialect: editorStore.dialect,
+    })
+
+    explainResult.value = result
+
+    if (!result.sql_valid) {
+      message.error(`SQL 语法错误，无法生成执行计划 (${result.validation_errors.length} 个错误)`)
+    } else if (result.warnings.length > 0) {
+      message.warning(`执行计划生成完成，发现 ${result.warnings.length} 个性能问题`)
+    } else {
+      message.success(`执行计划生成完成，总成本: ${result.total_cost.toFixed(2)}`)
+    }
+  } catch (error) {
+    console.error('Explain failed:', error)
+    message.error('执行计划分析失败，请检查后端服务是否运行')
+    explainResult.value = null
+  } finally {
+    isExplaining.value = false
+  }
+}
+
 // Format code (placeholder - SQLFluff can format but we'd need additional endpoint)
 function formatCode() {
   message.info('格式化功能即将推出')
@@ -195,6 +255,8 @@ function formatCode() {
 function clearEditor() {
   editorStore.setContent('')
   editorStore.clearDiagnostics()
+  explainResult.value = null
+  showExplainPlan.value = false
   sqlEditorRef.value?.setValue('')
   message.success('编辑器已清空')
 }
@@ -297,7 +359,22 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.toggle-diagnostics {
+.explain-container {
+  height: 420px;
+  flex-shrink: 0;
+  background-color: $bg-card;
+  border-radius: $border-radius-md;
+  box-shadow: $shadow-sm;
+  overflow: hidden;
+}
+
+.toggle-bar {
+  display: flex;
+  gap: $spacing-md;
+}
+
+.toggle-diagnostics,
+.toggle-explain {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -307,6 +384,7 @@ onUnmounted(() => {
   box-shadow: $shadow-sm;
   cursor: pointer;
   transition: all $transition-fast;
+  flex: 1;
 
   &:hover {
     background-color: darken($bg-card, 3%);
@@ -318,6 +396,12 @@ onUnmounted(() => {
     gap: $spacing-xs;
     font-size: $font-size-sm;
     color: $text-secondary;
+  }
+}
+
+.toggle-explain {
+  .toggle-text {
+    color: $primary-color;
   }
 }
 

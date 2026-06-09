@@ -16,6 +16,12 @@ from .schemas import (
     DiagnosticsParams,
     CompletionParams,
     SetDialectParams,
+    AccessType,
+    NodeType,
+    BottleneckLevel,
+    ExplainRequest,
+    ExecutionPlanNode,
+    ExplainResponse,
 )
 
 __all__ = [
@@ -33,4 +39,10 @@ __all__ = [
     "DiagnosticsParams",
     "CompletionParams",
     "SetDialectParams",
+    "AccessType",
+    "NodeType",
+    "BottleneckLevel",
+    "ExplainRequest",
+    "ExecutionPlanNode",
+    "ExplainResponse",
 ]
