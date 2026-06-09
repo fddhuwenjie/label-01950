@@ -124,6 +124,59 @@ class SetDialectParams(BaseModel):
     dialect: str
 
 
+# ==========================================
+# SQL Explain (Execution Plan) Schemas
+# ==========================================
+
+class ExplainRequest(BaseModel):
+    """Request body for POST /api/explain endpoint."""
+    sql: str = Field(..., description="SQL text to analyze")
+    dialect: str = Field(default="ansi", description="SQL dialect")
+
+
+class ExplainNode(BaseModel):
+    """
+    A node in the SQL execution plan tree.
+
+    This structure mirrors the TypeScript `ExplainNode` interface in the
+    frontend so that backend and frontend stay in sync.
+    """
+    id: str = Field(..., description="Unique node identifier")
+    operation: str = Field(..., description="Operation type, e.g. SELECT / JOIN / FILTER")
+    table: Optional[str] = Field(default=None, description="Table name involved (if any)")
+    estimated_rows: int = Field(..., ge=0, description="Estimated number of output rows")
+    access_type: str = Field(
+        ...,
+        description="Access type: full_scan / index_scan / temp_table / const / ref / unknown"
+    )
+    cost: float = Field(..., ge=0.0, description="Estimated cost of this node")
+    bottleneck: bool = Field(
+        default=False,
+        description="Whether this node is a performance bottleneck"
+    )
+    details: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Additional details such as join type / where condition / subquery info"
+    )
+    children: List["ExplainNode"] = Field(
+        default_factory=list,
+        description="Child nodes representing sub-operations"
+    )
+
+
+class ExplainResponse(BaseModel):
+    """Response body for POST /api/explain endpoint."""
+    success: bool = True
+    dialect: str
+    root: ExplainNode
+    total_cost: float = Field(..., ge=0.0, description="Total estimated cost of the plan")
+    warnings: List[str] = Field(default_factory=list, description="Performance warnings")
+
+
+# Allow recursive ExplainNode model
+ExplainNode.model_rebuild()
+
+
 __all__ = [
     "Position",
     "Range",
@@ -139,4 +192,7 @@ __all__ = [
     "DiagnosticsParams",
     "CompletionParams",
     "SetDialectParams",
+    "ExplainRequest",
+    "ExplainNode",
+    "ExplainResponse",
 ]

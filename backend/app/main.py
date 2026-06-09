@@ -23,7 +23,8 @@ from .core import (
     ErrorCode,
 )
 from .websocket import websocket_handler, connection_manager
-from .services import linter_service
+from .services import linter_service, explain_service
+from .models import ExplainRequest, ExplainResponse
 
 
 @asynccontextmanager
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
     await connection_manager.close_all()
     linter_service.shutdown()
+    explain_service.shutdown()
     logger.info("Shutdown complete")
 
 
@@ -230,6 +232,29 @@ async def get_dialects():
         "dialects": settings.SUPPORTED_DIALECTS,
         "default": settings.DEFAULT_DIALECT
     }
+
+
+@app.post("/api/explain", response_model=ExplainResponse)
+async def explain_sql(payload: ExplainRequest) -> ExplainResponse:
+    """
+    Generate a mocked SQL execution plan tree.
+
+    Validates SQL syntax with SQLFluff's `Linter`, then walks the parsed AST
+    to construct a tree of `ExplainNode` objects (no real DB connection).
+
+    Args:
+        payload: Request body with `sql` text and optional `dialect`.
+
+    Returns:
+        ExplainResponse containing the plan root, total cost and warnings.
+    """
+    logger.info(
+        f"Explain request: dialect={payload.dialect}, sql_len={len(payload.sql)}"
+    )
+    return await explain_service.explain(
+        sql=payload.sql,
+        dialect=payload.dialect,
+    )
 
 
 @app.websocket("/ws")

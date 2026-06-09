@@ -17,6 +17,10 @@
           <template #icon><ThunderboltOutlined /></template>
           分析
         </a-button>
+        <a-button :loading="isExplaining" @click="explainSql">
+          <template #icon><PartitionOutlined /></template>
+          Explain
+        </a-button>
         <a-button @click="formatCode">
           <template #icon><FormatPainterOutlined /></template>
           格式化
@@ -48,14 +52,34 @@
         </div>
       </transition>
 
+      <!-- Explain (Execution Plan) Panel -->
+      <transition name="slide-up">
+        <div v-if="showExplain" class="explain-container">
+          <ExplainPanel
+            :plan="explainPlan"
+            :loading="isExplaining"
+            :error="explainError"
+            @close="showExplain = false"
+          />
+        </div>
+      </transition>
+
       <!-- Toggle Diagnostics Button -->
-      <div v-if="!showDiagnostics" class="toggle-diagnostics" @click="showDiagnostics = true">
-        <span class="toggle-text">
-          <ExclamationCircleOutlined v-if="editorStore.hasErrors" />
-          <WarningOutlined v-else-if="editorStore.warningCount > 0" />
-          <CheckCircleOutlined v-else />
-          问题 ({{ editorStore.diagnostics.length }})
-        </span>
+      <div class="panel-toggles">
+        <div v-if="!showDiagnostics" class="toggle-diagnostics" @click="showDiagnostics = true">
+          <span class="toggle-text">
+            <ExclamationCircleOutlined v-if="editorStore.hasErrors" />
+            <WarningOutlined v-else-if="editorStore.warningCount > 0" />
+            <CheckCircleOutlined v-else />
+            问题 ({{ editorStore.diagnostics.length }})
+          </span>
+        </div>
+        <div v-if="!showExplain" class="toggle-diagnostics" @click="showExplain = true">
+          <span class="toggle-text">
+            <PartitionOutlined />
+            执行计划
+          </span>
+        </div>
       </div>
     </main>
 
@@ -75,16 +99,19 @@ import {
   ExclamationCircleOutlined,
   WarningOutlined,
   CheckCircleOutlined,
+  PartitionOutlined,
 } from '@ant-design/icons-vue'
 
 import SqlEditor from '@/components/SqlEditor.vue'
 import StatusBar from '@/components/StatusBar.vue'
 import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
 import DialectSelector from '@/components/DialectSelector.vue'
+import ExplainPanel from '@/components/ExplainPanel.vue'
 
 import { useEditorStore } from '@/stores/editor'
 import { useConnectionStore } from '@/stores/connection'
 import { createWebSocketClient, type CompletionItem, type Diagnostic } from '@/api/websocket'
+import { fetchExplainPlan, type ExplainResponse } from '@/api/explain'
 import type { SqlDialect } from '@/stores/editor'
 
 const editorStore = useEditorStore()
@@ -92,7 +119,11 @@ const connectionStore = useConnectionStore()
 
 const sqlEditorRef = ref<InstanceType<typeof SqlEditor> | null>(null)
 const showDiagnostics = ref(true)
+const showExplain = ref(false)
 const isAnalyzing = ref(false)
+const isExplaining = ref(false)
+const explainPlan = ref<ExplainResponse | null>(null)
+const explainError = ref<string>('')
 
 // WebSocket client
 const wsUrl = import.meta.env.PROD
@@ -189,6 +220,38 @@ async function analyzeCode() {
 // Format code (placeholder - SQLFluff can format but we'd need additional endpoint)
 function formatCode() {
   message.info('格式化功能即将推出')
+}
+
+// Generate SQL execution plan via POST /api/explain
+async function explainSql() {
+  const sql = editorStore.content
+  if (!sql || !sql.trim()) {
+    message.warning('请输入 SQL 后再点击 Explain')
+    return
+  }
+
+  showExplain.value = true
+  isExplaining.value = true
+  explainError.value = ''
+
+  try {
+    const plan = await fetchExplainPlan({
+      sql,
+      dialect: editorStore.dialect,
+    })
+    explainPlan.value = plan
+    message.success(
+      plan.warnings.length > 0
+        ? `执行计划已生成，发现 ${plan.warnings.length} 个性能瓶颈`
+        : '执行计划已生成',
+    )
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '生成执行计划失败'
+    explainError.value = msg
+    message.error(msg)
+  } finally {
+    isExplaining.value = false
+  }
 }
 
 // Clear editor
@@ -295,6 +358,20 @@ onUnmounted(() => {
   border-radius: $border-radius-md;
   box-shadow: $shadow-sm;
   overflow: hidden;
+}
+
+.explain-container {
+  height: 360px;
+  flex-shrink: 0;
+  background-color: $bg-card;
+  border-radius: $border-radius-md;
+  box-shadow: $shadow-sm;
+  overflow: hidden;
+}
+
+.panel-toggles {
+  display: flex;
+  gap: $spacing-sm;
 }
 
 .toggle-diagnostics {
