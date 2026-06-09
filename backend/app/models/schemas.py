@@ -124,6 +124,50 @@ class SetDialectParams(BaseModel):
     dialect: str
 
 
+class ExplainRequest(BaseModel):
+    """Request body for SQL EXPLAIN endpoint."""
+    sql: str = Field(..., min_length=1, description="SQL text to explain")
+    dialect: str = Field(default="ansi", description="SQL dialect")
+
+
+class AccessType(str):
+    """SQL access type constants."""
+    FULL_TABLE_SCAN = "full_table_scan"
+    INDEX_SCAN = "index_scan"
+    INDEX_SEEK = "index_seek"
+    TEMPORARY_TABLE = "temporary_table"
+    HASH_JOIN = "hash_join"
+    NESTED_LOOP = "nested_loop"
+    MERGE_JOIN = "merge_join"
+    SORT = "sort"
+    FILTER = "filter"
+    AGGREGATE = "aggregate"
+    SUBQUERY = "subquery"
+    TABLE_SCAN = "table_scan"
+
+
+class ExplainNode(BaseModel):
+    """Single node in the execution plan tree."""
+    id: str = Field(..., description="Unique node identifier")
+    operation_type: str = Field(..., description="Operation type (e.g., full_table_scan, index_scan)")
+    table_name: Optional[str] = Field(default=None, description="Table name if applicable")
+    estimated_rows: int = Field(default=0, ge=0, description="Estimated number of rows")
+    access_type: str = Field(..., description="Access type (e.g., full_table_scan, index_scan, temporary_table)")
+    cost: float = Field(default=0.0, ge=0.0, description="Estimated cost")
+    details: Optional[str] = Field(default=None, description="Additional details about the operation")
+    children: List["ExplainNode"] = Field(default_factory=list, description="Child nodes")
+
+
+class ExplainResponse(BaseModel):
+    """Response for SQL EXPLAIN endpoint."""
+    success: bool = Field(..., description="Whether the explain was successful")
+    root: Optional[ExplainNode] = Field(default=None, description="Root node of the execution plan tree")
+    error: Optional[str] = Field(default=None, description="Error message if explain failed")
+
+
+ExplainNode.model_rebuild()
+
+
 __all__ = [
     "Position",
     "Range",
@@ -139,4 +183,7 @@ __all__ = [
     "DiagnosticsParams",
     "CompletionParams",
     "SetDialectParams",
+    "ExplainRequest",
+    "ExplainNode",
+    "ExplainResponse",
 ]
