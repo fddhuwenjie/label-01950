@@ -1,9 +1,62 @@
 """
-Pydantic schemas for LSP protocol messages.
+Pydantic schemas for LSP protocol messages and execution plan.
 """
-from enum import IntEnum
+from enum import IntEnum, Enum
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
+
+
+class ExplainNodeType(str, Enum):
+    """Types of execution plan nodes."""
+    SELECT = "SELECT"
+    FROM = "FROM"
+    JOIN = "JOIN"
+    WHERE = "WHERE"
+    GROUP_BY = "GROUP_BY"
+    ORDER_BY = "ORDER_BY"
+    LIMIT = "LIMIT"
+    SUBQUERY = "SUBQUERY"
+    TABLE_SCAN = "TABLE_SCAN"
+    INDEX_SCAN = "INDEX_SCAN"
+    TEMP_TABLE = "TEMP_TABLE"
+    SORT = "SORT"
+    AGGREGATE = "AGGREGATE"
+    HASH_JOIN = "HASH_JOIN"
+    NESTED_LOOP_JOIN = "NESTED_LOOP_JOIN"
+    MERGE_JOIN = "MERGE_JOIN"
+
+
+class ExplainRequest(BaseModel):
+    """Request body for SQL explain endpoint."""
+    sql: str = Field(..., description="SQL statement to explain")
+    dialect: str = Field(default="ansi", description="SQL dialect")
+
+
+class ExplainPlanNode(BaseModel):
+    """Node in the execution plan tree."""
+    id: str = Field(..., description="Unique node identifier")
+    operation_type: ExplainNodeType = Field(..., description="Type of operation")
+    table_name: Optional[str] = Field(None, description="Table name if applicable")
+    estimated_rows: int = Field(..., description="Estimated number of rows")
+    access_type: Optional[str] = Field(None, description="Access type (full scan, index, etc.)")
+    cost: float = Field(..., description="Estimated cost")
+    description: str = Field(..., description="Human-readable description")
+    is_bottleneck: bool = Field(default=False, description="Whether this node is a performance bottleneck")
+    bottleneck_reason: Optional[str] = Field(None, description="Reason for being a bottleneck")
+    children: List["ExplainPlanNode"] = Field(default_factory=list, description="Child nodes")
+
+
+class ExplainResponse(BaseModel):
+    """Response containing execution plan."""
+    success: bool = True
+    plan: ExplainPlanNode
+    total_cost: float
+    total_estimated_rows: int
+    has_bottlenecks: bool
+    bottleneck_count: int
+
+
+ExplainPlanNode.model_rebuild()
 
 
 class DiagnosticSeverity(IntEnum):
@@ -124,50 +177,6 @@ class SetDialectParams(BaseModel):
     dialect: str
 
 
-class ExplainRequest(BaseModel):
-    """Request body for SQL EXPLAIN endpoint."""
-    sql: str = Field(..., min_length=1, description="SQL text to explain")
-    dialect: str = Field(default="ansi", description="SQL dialect")
-
-
-class AccessType(str):
-    """SQL access type constants."""
-    FULL_TABLE_SCAN = "full_table_scan"
-    INDEX_SCAN = "index_scan"
-    INDEX_SEEK = "index_seek"
-    TEMPORARY_TABLE = "temporary_table"
-    HASH_JOIN = "hash_join"
-    NESTED_LOOP = "nested_loop"
-    MERGE_JOIN = "merge_join"
-    SORT = "sort"
-    FILTER = "filter"
-    AGGREGATE = "aggregate"
-    SUBQUERY = "subquery"
-    TABLE_SCAN = "table_scan"
-
-
-class ExplainNode(BaseModel):
-    """Single node in the execution plan tree."""
-    id: str = Field(..., description="Unique node identifier")
-    operation_type: str = Field(..., description="Operation type (e.g., full_table_scan, index_scan)")
-    table_name: Optional[str] = Field(default=None, description="Table name if applicable")
-    estimated_rows: int = Field(default=0, ge=0, description="Estimated number of rows")
-    access_type: str = Field(..., description="Access type (e.g., full_table_scan, index_scan, temporary_table)")
-    cost: float = Field(default=0.0, ge=0.0, description="Estimated cost")
-    details: Optional[str] = Field(default=None, description="Additional details about the operation")
-    children: List["ExplainNode"] = Field(default_factory=list, description="Child nodes")
-
-
-class ExplainResponse(BaseModel):
-    """Response for SQL EXPLAIN endpoint."""
-    success: bool = Field(..., description="Whether the explain was successful")
-    root: Optional[ExplainNode] = Field(default=None, description="Root node of the execution plan tree")
-    error: Optional[str] = Field(default=None, description="Error message if explain failed")
-
-
-ExplainNode.model_rebuild()
-
-
 __all__ = [
     "Position",
     "Range",
@@ -183,7 +192,8 @@ __all__ = [
     "DiagnosticsParams",
     "CompletionParams",
     "SetDialectParams",
+    "ExplainNodeType",
     "ExplainRequest",
-    "ExplainNode",
+    "ExplainPlanNode",
     "ExplainResponse",
 ]

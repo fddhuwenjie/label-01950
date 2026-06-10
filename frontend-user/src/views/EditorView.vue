@@ -17,7 +17,7 @@
           <template #icon><ThunderboltOutlined /></template>
           分析
         </a-button>
-        <a-button :loading="isExplaining" @click="explainCode">
+        <a-button :type="showExecutionPlan ? 'primary' : 'default'" @click="toggleExecutionPlan">
           <template #icon><ApartmentOutlined /></template>
           Explain
         </a-button>
@@ -52,14 +52,14 @@
         </div>
       </transition>
 
-      <!-- Explain Plan Panel -->
+      <!-- Execution Plan Panel -->
       <transition name="slide-up">
-        <div v-if="showExplainPlan" class="explain-container">
-          <ExplainPlanPanel
-            :plan="explainPlan"
-            :loading="isExplaining"
-            :error="explainError"
-            @close="showExplainPlan = false"
+        <div v-if="showExecutionPlan" class="execution-plan-container">
+          <ExecutionPlanPanel
+            :sql="editorStore.content"
+            :dialect="editorStore.dialect"
+            :visible="showExecutionPlan"
+            @close="showExecutionPlan = false"
           />
         </div>
       </transition>
@@ -98,13 +98,11 @@ import SqlEditor from '@/components/SqlEditor.vue'
 import StatusBar from '@/components/StatusBar.vue'
 import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
 import DialectSelector from '@/components/DialectSelector.vue'
-import ExplainPlanPanel from '@/components/ExplainPlanPanel.vue'
+import ExecutionPlanPanel from '@/components/ExecutionPlanPanel.vue'
 
 import { useEditorStore } from '@/stores/editor'
 import { useConnectionStore } from '@/stores/connection'
 import { createWebSocketClient, type CompletionItem, type Diagnostic } from '@/api/websocket'
-import { fetchExplainPlan } from '@/api/explain'
-import type { ExplainNode } from '@/types/explain'
 import type { SqlDialect } from '@/stores/editor'
 
 const editorStore = useEditorStore()
@@ -112,11 +110,8 @@ const connectionStore = useConnectionStore()
 
 const sqlEditorRef = ref<InstanceType<typeof SqlEditor> | null>(null)
 const showDiagnostics = ref(true)
+const showExecutionPlan = ref(false)
 const isAnalyzing = ref(false)
-const showExplainPlan = ref(false)
-const isExplaining = ref(false)
-const explainPlan = ref<ExplainNode | null>(null)
-const explainError = ref<string | null>(null)
 
 // WebSocket client
 const wsUrl = import.meta.env.PROD
@@ -210,43 +205,14 @@ async function analyzeCode() {
   }
 }
 
+// Toggle execution plan panel
+function toggleExecutionPlan() {
+  showExecutionPlan.value = !showExecutionPlan.value
+}
+
 // Format code (placeholder - SQLFluff can format but we'd need additional endpoint)
 function formatCode() {
   message.info('格式化功能即将推出')
-}
-
-// Explain SQL execution plan
-async function explainCode() {
-  if (!editorStore.content.trim()) {
-    message.warning('请先输入 SQL 语句')
-    return
-  }
-
-  isExplaining.value = true
-  explainError.value = null
-  explainPlan.value = null
-  showExplainPlan.value = true
-
-  try {
-    const response = await fetchExplainPlan({
-      sql: editorStore.content,
-      dialect: editorStore.dialect,
-    })
-
-    if (response.success && response.root) {
-      explainPlan.value = response.root
-      message.success('执行计划生成完成')
-    } else {
-      explainError.value = response.error || '生成执行计划失败'
-      message.error('生成执行计划失败')
-    }
-  } catch (error) {
-    console.error('Explain failed:', error)
-    explainError.value = '请求执行计划失败，请检查后端服务是否启动'
-    message.error('请求执行计划失败')
-  } finally {
-    isExplaining.value = false
-  }
 }
 
 // Clear editor
@@ -355,10 +321,9 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.explain-container {
-  height: 300px;
+.execution-plan-container {
+  height: 400px;
   flex-shrink: 0;
-  background-color: $bg-card;
   border-radius: $border-radius-md;
   box-shadow: $shadow-sm;
   overflow: hidden;
