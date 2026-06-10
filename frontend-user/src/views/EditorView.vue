@@ -17,6 +17,10 @@
           <template #icon><ThunderboltOutlined /></template>
           分析
         </a-button>
+        <a-button :type="showExplainPanel ? 'default' : 'default'" :loading="isExplaining" @click="handleExplain">
+          <template #icon><LineChartOutlined /></template>
+          Explain
+        </a-button>
         <a-button @click="formatCode">
           <template #icon><FormatPainterOutlined /></template>
           格式化
@@ -57,6 +61,16 @@
           问题 ({{ editorStore.diagnostics.length }})
         </span>
       </div>
+
+      <!-- Execution Plan Panel -->
+      <transition name="slide-up">
+        <div v-if="showExplainPanel" class="explain-container">
+          <ExplainPlan :plan="explainResult" />
+          <div class="close-explain-btn" @click="showExplainPanel = false">
+            <CloseOutlined />
+          </div>
+        </div>
+      </transition>
     </main>
 
     <!-- Status Bar -->
@@ -75,12 +89,16 @@ import {
   ExclamationCircleOutlined,
   WarningOutlined,
   CheckCircleOutlined,
+  LineChartOutlined,
+  CloseOutlined,
 } from '@ant-design/icons-vue'
 
 import SqlEditor from '@/components/SqlEditor.vue'
 import StatusBar from '@/components/StatusBar.vue'
 import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
 import DialectSelector from '@/components/DialectSelector.vue'
+import ExplainPlan from '@/components/ExplainPlan.vue'
+import { explainSql, type ExplainResponse } from '@/api/explain'
 
 import { useEditorStore } from '@/stores/editor'
 import { useConnectionStore } from '@/stores/connection'
@@ -93,6 +111,9 @@ const connectionStore = useConnectionStore()
 const sqlEditorRef = ref<InstanceType<typeof SqlEditor> | null>(null)
 const showDiagnostics = ref(true)
 const isAnalyzing = ref(false)
+const showExplainPanel = ref(false)
+const isExplaining = ref(false)
+const explainResult = ref<ExplainResponse | null>(null)
 
 // WebSocket client
 const wsUrl = import.meta.env.PROD
@@ -183,6 +204,34 @@ async function analyzeCode() {
     message.error('分析失败')
   } finally {
     isAnalyzing.value = false
+  }
+}
+
+// Explain SQL execution plan
+async function handleExplain() {
+  if (!editorStore.content.trim()) {
+    message.warning('请先输入 SQL 语句')
+    return
+  }
+
+  if (showExplainPanel.value && explainResult.value) {
+    showExplainPanel.value = false
+    return
+  }
+
+  isExplaining.value = true
+
+  try {
+    const result = await explainSql(editorStore.content, editorStore.dialect)
+    explainResult.value = result
+    showExplainPanel.value = true
+    message.success('执行计划生成成功')
+  } catch (error: any) {
+    console.error('Explain failed:', error)
+    const errorMsg = error?.response?.data?.error?.message || error.message || '生成执行计划失败'
+    message.error(errorMsg)
+  } finally {
+    isExplaining.value = false
   }
 }
 
@@ -318,6 +367,37 @@ onUnmounted(() => {
     gap: $spacing-xs;
     font-size: $font-size-sm;
     color: $text-secondary;
+  }
+}
+
+.explain-container {
+  height: 340px;
+  flex-shrink: 0;
+  background-color: $bg-card;
+  border-radius: $border-radius-md;
+  box-shadow: $shadow-sm;
+  overflow: hidden;
+  position: relative;
+}
+
+.close-explain-btn {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
+  transition: all $transition-fast;
+  z-index: 10;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
   }
 }
 

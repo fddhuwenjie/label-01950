@@ -23,7 +23,8 @@ from .core import (
     ErrorCode,
 )
 from .websocket import websocket_handler, connection_manager
-from .services import linter_service
+from .services import linter_service, explain_service
+from .models import ExplainRequest, ExplainResponse
 
 
 @asynccontextmanager
@@ -230,6 +231,29 @@ async def get_dialects():
         "dialects": settings.SUPPORTED_DIALECTS,
         "default": settings.DEFAULT_DIALECT
     }
+
+
+@app.post("/api/explain", response_model=ExplainResponse)
+async def explain_sql(request: ExplainRequest):
+    """
+    Generate a simulated execution plan for a SQL statement.
+
+    Validates SQL syntax using SQLFluff, then analyzes the SQL structure
+    to generate a simulated execution plan tree with cost estimates.
+
+    Args:
+        request: ExplainRequest containing SQL and dialect.
+
+    Returns:
+        ExplainResponse with execution plan tree and performance warnings.
+
+    Raises:
+        InvalidDialectException: If dialect is not supported.
+        ValidationException: If SQL syntax is invalid.
+    """
+    logger.info(f"Explain request for dialect: {request.dialect}")
+    result = explain_service.generate_plan(request.sql, request.dialect)
+    return result
 
 
 @app.websocket("/ws")

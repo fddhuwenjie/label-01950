@@ -1,7 +1,7 @@
 """
 Pydantic schemas for LSP protocol messages.
 """
-from enum import IntEnum
+from enum import IntEnum, Enum
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 
@@ -124,6 +124,73 @@ class SetDialectParams(BaseModel):
     dialect: str
 
 
+class ExplainOperationType(str, Enum):
+    """Types of operations in an execution plan."""
+    SELECT = "SELECT"
+    FROM = "FROM"
+    WHERE = "WHERE"
+    JOIN = "JOIN"
+    LEFT_JOIN = "LEFT JOIN"
+    RIGHT_JOIN = "RIGHT JOIN"
+    INNER_JOIN = "INNER JOIN"
+    FULL_JOIN = "FULL JOIN"
+    CROSS_JOIN = "CROSS JOIN"
+    GROUP_BY = "GROUP BY"
+    ORDER_BY = "ORDER BY"
+    HAVING = "HAVING"
+    LIMIT = "LIMIT"
+    DISTINCT = "DISTINCT"
+    UNION = "UNION"
+    SUBQUERY = "SUBQUERY"
+    AGGREGATE = "AGGREGATE"
+    SORT = "SORT"
+    TABLE_SCAN = "TABLE SCAN"
+    INDEX_SCAN = "INDEX SCAN"
+    TEMP_TABLE = "TEMP TABLE"
+    NESTED_LOOP = "NESTED LOOP"
+    HASH_JOIN = "HASH JOIN"
+    SORT_MERGE_JOIN = "SORT MERGE JOIN"
+
+
+class ExplainAccessType(str, Enum):
+    """Access types for table operations."""
+    FULL_SCAN = "full_scan"
+    INDEX_SCAN = "index_scan"
+    INDEX_SEEK = "index_seek"
+    TEMP_TABLE = "temp_table"
+    MEMORY = "memory"
+
+
+class ExplainPlanNode(BaseModel):
+    """A node in the execution plan tree."""
+    id: str = Field(..., description="Unique identifier for the node")
+    operation: ExplainOperationType = Field(..., description="Type of operation")
+    table_name: Optional[str] = Field(None, description="Name of the table involved")
+    estimated_rows: int = Field(..., ge=0, description="Estimated number of rows processed")
+    access_type: Optional[ExplainAccessType] = Field(None, description="Type of data access")
+    cost: float = Field(..., ge=0, description="Estimated cost of the operation")
+    description: Optional[str] = Field(None, description="Human-readable description")
+    children: List["ExplainPlanNode"] = Field(default_factory=list, description="Child nodes")
+
+
+class ExplainRequest(BaseModel):
+    """Request body for SQL explain endpoint."""
+    sql: str = Field(..., description="SQL statement to explain")
+    dialect: str = Field("ansi", description="SQL dialect")
+
+
+class ExplainResponse(BaseModel):
+    """Response body for SQL explain endpoint."""
+    success: bool = True
+    plan: ExplainPlanNode
+    total_cost: float = Field(..., ge=0, description="Total estimated cost")
+    warnings: List[str] = Field(default_factory=list, description="Performance warnings")
+    dialect: str = Field(..., description="SQL dialect used")
+
+
+ExplainPlanNode.model_rebuild()
+
+
 __all__ = [
     "Position",
     "Range",
@@ -139,4 +206,9 @@ __all__ = [
     "DiagnosticsParams",
     "CompletionParams",
     "SetDialectParams",
+    "ExplainOperationType",
+    "ExplainAccessType",
+    "ExplainPlanNode",
+    "ExplainRequest",
+    "ExplainResponse",
 ]

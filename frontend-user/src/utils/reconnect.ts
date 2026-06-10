@@ -94,13 +94,13 @@ export class ReconnectManager {
 /**
  * Create a debounced function.
  */
-export function debounce<T extends (...args: unknown[]) => void>(
-  fn: T,
+export function debounce<T extends unknown[]>(
+  fn: (...args: T) => void,
   delay: number
-): (...args: Parameters<T>) => void {
+): (...args: T) => void {
   let timer: ReturnType<typeof setTimeout> | null = null
 
-  return (...args: Parameters<T>) => {
+  return (...args: T) => {
     if (timer) {
       clearTimeout(timer)
     }
@@ -113,13 +113,13 @@ export function debounce<T extends (...args: unknown[]) => void>(
 /**
  * Create a throttled function.
  */
-export function throttle<T extends (...args: unknown[]) => void>(
-  fn: T,
+export function throttle<T extends unknown[]>(
+  fn: (...args: T) => void,
   limit: number
-): (...args: Parameters<T>) => void {
+): (...args: T) => void {
   let inThrottle = false
 
-  return (...args: Parameters<T>) => {
+  return (...args: T) => {
     if (!inThrottle) {
       fn(...args)
       inThrottle = true
